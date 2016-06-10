@@ -1,0 +1,261 @@
+<html>
+  <head>
+    <title>Menu Planner</title>
+  </head>
+  <script src="http://code.jquery.com/jquery-1.11.3.min.js" type="text/javascript"></script>
+  <script src="https://api.trello.com/1/client.js?key=b8bdca0a42d29a1114c6aa76920cdca7"></script>
+  
+  <script type="text/javascript">
+	var lunchDays = [ "Saturday", "Sunday" ]
+	var dinnerDays = [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" ];
+
+	class CardSet
+	{
+		constructor( )
+		{
+			this.index = -1;
+			this.cards = [ ];
+		}
+
+		ready( )
+		{
+			return ( this.index >= 0 );
+		}
+
+		getCount( )
+		{
+			return ( this.cards.length );
+		}
+
+		addCards( cards )
+		{
+			this.cards = shuffle( cards );
+			this.index = 0;
+		}
+
+		getNext( )
+		{
+			var returnedCard = this.cards[ this.index ];
+			this.index = this.index + 1;
+			if( this.index >= this.cards.length )
+			{
+				this.index = 0;
+			}
+
+			return returnedCard;
+		}
+	}
+
+	var mainCards = new CardSet( );
+	var vegetableCards = new CardSet( );
+	var starchCards = new CardSet( );
+	var lunchCards = new CardSet( );
+	var menuPlanLists = new CardSet( );
+
+	function getLists( )
+	{
+		Trello.get( '/boards/wtw8NCpS/lists/', parseLists, function( ) { alert( "Could not read menu lists." ) } );
+		Trello.get( '/boards/kj8tx5uR/lists/', saveMenuPlan, function( ) { alert( "Could not read menu plan lists." ) } );
+	}
+
+	function saveMenuPlan( lists )
+	{
+		menuPlanLists.addCards( lists );
+	}
+
+	function clearMealPlan( )
+	{
+		Trello.get( '/boards/kj8tx5uR/cards/', deleteMealPlanCards, function( ) { alert( "Could not delete meal plan cards." ) } );
+	}
+
+	function deleteMealPlanCards( cards )
+	{
+		for( i = 0; i < cards.length; i++ )
+		{
+			Trello.delete( '/cards/' + cards[ i ].id, function( ) {  }, function( ) {  } );
+		}
+	}
+
+	function parseLists( lists )
+	{
+		for( i = 0; i < lists.length; i++ )
+		{
+			if ( lists[ i ].name == "Mains" )
+			{
+				Trello.get( '/lists/' + lists[ i ].id + '/cards', parseMains, function( ) { alert( "Could not read mains." ) } );
+			}
+			else if( lists[ i ].name == "Starches" )
+			{
+				Trello.get( '/lists/' + lists[ i ].id + '/cards', parseStarches, function( ) { alert( "Could not read side dishes." ) } );
+			}
+			else if( lists[ i ].name == "Vegetables" )
+			{
+				Trello.get( '/lists/' + lists[ i ].id + '/cards', parseVegetables, function( ) { alert( "Could not read vegetables." ) } );
+			}
+			else if( lists[ i ].name == "Lunches" )
+			{
+				Trello.get( '/lists/' + lists[ i ].id + '/cards', parseLunches, function( ) { alert( "Could not read lunches." ) } );
+			}
+		}
+	}
+
+	function parseStarches( starches )
+	{
+		starchCards.addCards( starches );
+		setMeals( );
+	}
+
+	function parseMains( mains )
+	{
+		mainCards.addCards( mains );
+		setMeals( );
+	}
+
+	function parseVegetables( vegetables )
+	{
+		vegetableCards.addCards( vegetables );
+		setMeals( );
+	}
+
+	function parseLunches( lunches )
+	{
+		lunchCards.addCards( lunches );
+	}
+
+	function setMeals( )
+	{
+		if( !mainCards.ready( ) || !starchCards.ready( ) || !vegetableCards.ready( ) )
+		{
+			return;
+		}
+
+		var cheatDayIndex = Math.floor( Math.random( ) * ( dinnerDays.length - 1 ) );
+
+		for( day = 0; day < dinnerDays.length; day++ )
+		{
+			if( day == cheatDayIndex )
+			{
+				document.getElementById( "Dinner" + dinnerDays[ day ] ).innerHTML = "CHEAT!";
+			}
+			else
+			{
+				setDinnerOnDay( day );
+			}
+		}
+	}
+
+	function shuffle( array )
+	{
+		var currentIndex = array.length, temporaryValue, randomIndex;
+		while ( 0 !== currentIndex )
+		{
+			randomIndex = Math.floor(Math.random() * currentIndex);
+			currentIndex -= 1;
+
+			temporaryValue = array[currentIndex];
+    			array[currentIndex] = array[randomIndex];
+			array[randomIndex] = temporaryValue;
+		}
+
+		return array;
+	}
+
+	function setDinnerOnDay( day )
+	{
+		doc = document.getElementById( "Dinner" + dinnerDays[ day ] );
+		main = mainCards.getNext( );
+
+		doc.innerHTML = main.name;
+
+		if( main.labels.length > 0 )
+		{
+			var sideIndex = Math.floor( Math.random( ) * main.labels.length );
+			if( main.labels[ sideIndex ].name == "Vegetable" )
+			{
+				doc.innerHTML = doc.innerHTML + " with " + vegetableCards.getNext( ).name;
+			}
+			else if( main.labels[ sideIndex ].name == "Starch" )
+			{
+				doc.innerHTML = doc.innerHTML + " with " + starchCards.getNext( ).name;
+			}
+		}
+	}
+
+	function setMenu( )
+	{
+		for( day = 0; day < dinnerDays.length; day++ )
+		{
+			var dayName = dinnerDays[ day ];
+			var dinnerText = document.getElementById( "Dinner" + dayName ).innerHTML;
+
+			for( listIdx = 0; listIdx < menuPlanLists.getCount( ); listIdx )
+			{
+				var currList = menuPlanLists.getNext( );
+
+				if( currList.name == dayName )
+				{
+					var newCard =
+					{
+						name: dinnerText,
+						idList: currList.id
+					};
+
+					Trello.post( '/cards/', newCard, function( ) { } );
+					break;
+				}
+			}
+		}
+	}
+
+	Trello.authorize(
+	{
+		type: "popup",
+		name: "Menu Plan",
+		persist: true,
+		scope: {
+			read: true,
+       			write: true },
+      		expiration: "never",
+      		success: getLists,
+		error: function() { alert("Failed authentication"); }
+	});
+  </script>
+  <body>
+
+	<h1>Food This Week</h1>
+	<table border="1" style="width:100%">
+		<tr>
+			<th width="9%"><button onclick="clearMealPlan()">Clear Old</button></th>
+			<th width="13%">Monday</th>
+			<th width="13%">Tuesday</th>
+			<th width="13%">Wednesday</th>
+			<th width="13%">Thursday</th>
+			<th width="13%">Friday</th>
+			<th width="13%">Saturday</th>
+			<th width="13%">Sunday</th>
+		</tr>
+		<tr>
+			<th width="9%"><button onclick="setMenu()">Set Dinner</button></th>
+			<td id="DinnerMonday"></td>
+			<td id="DinnerTuesday"></td>
+			<td id="DinnerWednesday"></td>
+			<td id="DinnerThursday"></td>
+			<td id="DinnerFriday"></td>
+			<td id="DinnerSaturday"></td>
+			<td id="DinnerSunday"></td>
+		</tr>
+		<tr>
+			<td>Lunch</td>
+			<td id="LunchMonday"></td>
+			<td id="LunchTuesday"></td>
+			<td id="LunchWednesday"></td>
+			<td id="LunchThursday"></td>
+			<td id="LunchFriday"></td>
+			<td id="LunchSaturday"></td>
+			<td id="LunchSunday"></td>
+		</tr>
+	</table>
+  </body>
+
+
+</html>
